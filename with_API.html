@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Expression Recognition</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            position: relative;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+        }
+
+        #video {
+            width: 640px;
+            height: 480px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            position: relative;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 640px;
+            height: 480px;
+            z-index: 2;
+        }
+
+        #expression {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Face Expression Recognition</h1>
+        <video id="video" autoplay muted></video>
+        <canvas id="overlay"></canvas>
+        <div id="expression">Loading...</div>
+    </div>
+
+ 
+    <script src="/face-api.js-master/dist/face-api.js"></script>
+    <script src="/face-api.js-master/dist/face-api.min.js"></script>
+    <script>
+        const video = document.getElementById('video');
+        const overlay = document.getElementById('overlay');
+        const expressionDiv = document.getElementById('expression');
+
+         Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+            faceapi.nets.faceExpressionNet.loadFromUri('/models')
+        ]).then(startVideo);
+
+        function startVideo() {
+            navigator.mediaDevices.getUserMedia({ video: {} })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        overlay.width = video.videoWidth;
+                        overlay.height = video.videoHeight;
+                        onPlay();
+                    };
+                })
+                .catch(err => console.error('Error accessing webcam: ', err));
+        }
+
+        function onPlay() {
+            const displaySize = { width: video.videoWidth, height: video.videoHeight };
+            faceapi.matchDimensions(overlay, displaySize);
+
+            setInterval(async () => {
+                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+                    .withFaceExpressions();
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+                overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+                faceapi.draw.drawDetections(overlay, resizedDetections);
+                faceapi.draw.drawFaceExpressions(overlay, resizedDetections);
+
+                if (detections.length > 0) {
+                    const expressions = detections[0].expressions;
+                    const maxValue = Math.max(...Object.values(expressions));
+                    const emotion = Object.keys(expressions).find(key => expressions[key] === maxValue);
+
+                    expressionDiv.innerText = `Emotion: ${emotion.charAt(0).toUpperCase() + emotion.slice(1)}`;
+                } else {
+                    expressionDiv.innerText = "No face detected";
+                }
+            }, 200);  
+        }
+    </script>
+</body>
+</html>

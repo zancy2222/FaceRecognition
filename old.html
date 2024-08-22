@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Detection and Smile Detection</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #e5e5e5;
+            font-family: 'Arial', sans-serif;
+            color: #333;
+        }
+        .container {
+            position: relative;
+            width: 80%;
+            max-width: 900px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+        .video-wrapper {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-bottom: 4px solid #007bff;
+            overflow: hidden;
+        }
+        #video {
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+        }
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            border-radius: 12px;
+        }
+        .status {
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            background: #007bff;
+            color: #fff;
+            border-top: 4px solid #0056b3;
+            border-radius: 0 0 12px 12px;
+        }
+        .status.smiling {
+            background-color: #28a745; /* Green for smiling */
+        }
+        .status.not-smiling {
+            background-color: #dc3545; /* Red for not smiling */
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            color: #007bff;
+            display: none;
+        }
+        .camera-button {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            font-size: 16px;
+            color: #fff;
+            background-color: #007bff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .camera-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="video-wrapper">
+            <video id="video" width="640" height="480" autoplay></video>
+            <canvas id="canvas"></canvas>
+            <div class="loading" id="loading">Loading...</div>
+        </div>
+        <div class="status" id="status">Not Smiling</div>
+        <button class="camera-button" id="cameraButton">Start Camera</button>
+    </div>
+
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/facemesh"></script>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        const status = document.getElementById('status');
+        const loading = document.getElementById('loading');
+        const cameraButton = document.getElementById('cameraButton');
+
+        let cameraStarted = false;
+
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        cameraStarted = true;
+                        cameraButton.style.display = 'none'; // Hide button after camera starts
+                        loading.style.display = 'none'; // Hide loading indicator
+                        resolve(video);
+                    };
+                });
+            } catch (error) {
+                console.error('Error accessing the camera: ', error);
+                alert('Error accessing the camera. Please check permissions.');
+            }
+        }
+
+        async function detectFaces() {
+            const model = await facemesh.load();
+            async function detect() {
+                const predictions = await model.estimateFaces(video, false);
+
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                if (predictions.length > 0) {
+                    predictions.forEach((prediction) => {
+                        const [x1, y1] = prediction.scaledMesh[13]; // Left corner of mouth
+                        const [x2, y2] = prediction.scaledMesh[14]; // Right corner of mouth
+
+                        const distance = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+
+                        // Check if the distance is above a threshold indicating a smile
+                        if (distance > 30) { // Adjust the threshold as needed
+                            status.innerText = 'Smiling';
+                            status.className = 'status smiling';
+                        } else {
+                            status.innerText = 'Not Smiling';
+                            status.className = 'status not-smiling';
+                        }
+                    });
+                }
+                requestAnimationFrame(detect);
+            }
+            detect();
+        }
+
+        async function main() {
+            loading.style.display = 'block'; // Show loading indicator
+            await setupCamera();
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            detectFaces();
+        }
+
+        cameraButton.addEventListener('click', main);
+    </script>
+</body>
+</html>
